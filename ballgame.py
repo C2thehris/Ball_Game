@@ -1,214 +1,282 @@
-#comments
-'''unused code'''
-
 #libraries
 import pygame
 import math
-import sys
 import numpy as np
 
-#initialize game
-pygame.init() 
-run = True
-w, h = 700, 700
-screen = pygame.display.set_mode(([w, h]), pygame.RESIZABLE)
-FPS = 165 
-fpsClock = pygame.time.Clock()
-debug_mode = False
-
-#player variables
-position = np.array([500, 500], dtype = float)
-velocity = np.array([1, 1], dtype = float)
-radius = 100
-gravity = 0.1
-bounciness = 0.8 #1 = large bounce, 0 = no bounce
-slipperiness = 0.996 #1 = slippery, 0 = rough
-force = 0.15 
-theta = 0
-omega = 0
-
-#camera variables
-camera_buffer_x, camera_buffer_y = 500, 250
-camera_velocity_x = 0
-camera_position_x = w/2
-camera_velocity_y = 0
-camera_position_y = h/2
-target_x, target_y = w/2, h/2
+# TODO: Move these to a class
 k, b = 0.03, 0.5
+w, h = 700, 700
+screen = pygame.display.set_mode(([w, h]), pygame.RESIZABLE) # This one should likely go in the camera class
 
-#functions: draw_circle, circle, draw line, line, rectangle
-#draws circle on screen relative to camera position
-def draw_circle(circle_x, circle_y, circle_radius, color):
-    global camera_position_x
-    global camera_position_y
-    adjusted_position_x = w/2 + circle_x - camera_position_x
-    adjusted_position_y = h/2 + circle_y - camera_position_y 
-    pygame.draw.circle(screen, color, (adjusted_position_x, adjusted_position_y), circle_radius, 2)
+class Shape:
+    def __init__(self):
+        pass
 
-#constructs and draws circle that has collision with the player
-def circle(circle_x, circle_y, circle_radius):
-    global radius
-    global position
-    global velocity
-    global omega
+    def draw(self, camera):
+        pass
 
-    #creates a unit vector pointing from the circle position to the player position
-    x_displacement = position[0] - circle_x
-    y_displacement = position[1] - circle_y
-    distance = math.sqrt((x_displacement)**2 + (y_displacement)**2)
-    unit_vector = [x_displacement/distance, y_displacement/distance]
+    def collide(self, player):
+        pass
 
-    #player bounces off circle if they collide
-    if distance < radius + circle_radius:
-        position[0], position[1] = circle_x + unit_vector[0] * (radius + circle_radius), circle_y + unit_vector[1] * (radius + circle_radius)
-        dot_product = velocity[0] * unit_vector[0] + velocity[1] * unit_vector[1]
-        projection = np.array([dot_product * unit_vector[0], dot_product * unit_vector[1]])
-        normal_velocity = - bounciness * projection
-        tangential_velocity = slipperiness * (velocity - projection)
-        velocity = normal_velocity + tangential_velocity
-        
-        #changes rotation of player (not super physically accurate)
-        new_dot_product = tangential_velocity[0] * y_displacement - tangential_velocity[1] * x_displacement
-        if new_dot_product > 0: sign = -1
-        else: sign = 1
-        omega = sign * np.linalg.norm(slipperiness * (velocity - projection))/radius
+# TODO: Add a color
+class Circle(Shape):
+    def __init__(self, x, y, r):
+        self.x = x
+        self.y = y
+        self.r = r
 
-    #draw circle   
-    if circle_radius > 0:
-        draw_circle(circle_x, circle_y, circle_radius, 'blue')
+    def draw(self, camera):
+        adjusted_p_x = w/2 + self.x - camera.p[0]
+        adjusted_p_y = h/2 + self.y - camera.p[1]
+        pygame.draw.circle(screen, 'blue', (adjusted_p_x, adjusted_p_y), self.r, 2)
 
-#draws line on screen relative to camera position
-def draw_line(x1, y1, x2, y2):
-    global camera_position_x
-    global camera_position_y
-    adjusted_x1 = w/2 + x1 - camera_position_x
-    adusted_y1 = h/2 + y1 - camera_position_y 
-    adjusted_x2 = w/2 + x2 - camera_position_x
-    adjusted_y2 = h/2 + y2 - camera_position_y 
-    pygame.draw.line(screen, "blue", (adjusted_x1, adusted_y1), (adjusted_x2, adjusted_y2), 2)
+    def collide(self, player):
+        #creates a unit vector pointing from the circle p to the player.p
+        dx = player.p[0] - self.x
+        dy = player.p[1] - self.y
+        distance = math.sqrt((dx)**2 + (dy)**2)
+        unit_vector = np.array([dx/distance, dy/distance], dtype = float)
 
-#constructs and draws line that has collision with the player
-def line(x1, y1, x2, y2):
-    global position
-    global velocity
-    global radius
-    global omega
-
-    #creates a unit vector pointing from the start of the line to the end
-    x_displacement = x2 - x1
-    y_displacement = y2 - y1
-    distance = math.sqrt(x_displacement**2 + y_displacement**2)
-    line_unit_vector = np.array([x_displacement/distance, y_displacement/distance], dtype = float)
-    
-    #bounces player off line if they collide
-    dot_product = (position[0] - x1) * line_unit_vector[0] + (position[1] - y1) * line_unit_vector[1]
-    projection = np.array([dot_product * line_unit_vector[0], dot_product * line_unit_vector[1]])
-    normal_vector = np.array([(position[0] - x1), (position[1] - y1)], dtype = float) - projection
-    norm = normal_vector/np.linalg.norm(normal_vector)   
-    if dot_product > 0 and np.linalg.norm(projection) < distance:
-        if np.linalg.norm(normal_vector) < radius:
-            position = [x1 + projection[0] + radius * norm[0]/np.linalg.norm(norm), y1 + projection[1] + radius * norm[1]/np.linalg.norm(norm)]
-            dot_product = velocity[0] * norm[0] + velocity[1] * norm[1]
-            projection = np.array([dot_product * norm[0], dot_product * norm[1]])
-            normal_velocity = - bounciness * projection
-            tangential_velocity = slipperiness * (velocity - projection)
-            velocity = normal_velocity + tangential_velocity
+        # TODO: Refactor this into a function
+        #player bounces off circle if they collide
+        if distance < player.radius + self.r:
+            player.p[0] = self.x + unit_vector[0] * (player.radius + self.r)
+            player.p[1] = self.y + unit_vector[1] * (player.radius + self.r)
+            dot_product = player.v[0] * unit_vector[0] + player.v[1] * unit_vector[1]
+            projection = np.array([dot_product * unit_vector[0], dot_product * unit_vector[1]])
+            normal_v = - player.bounciness * projection
+            tangential_v = player.slipperiness * (player.v - projection)
+            player.v = normal_v + tangential_v
             
             #changes rotation of player (not super physically accurate)
-            new_dot_product = tangential_velocity[0] * x_displacement + tangential_velocity[1] * y_displacement
-            if new_dot_product > 0: sign = 1
-            else: sign = -1
-            omega = sign * np.linalg.norm(tangential_velocity)/radius
-    
-    #add 0 radius circles so player can collide with the ends of the line, and then draw the line 
-    circle(x1, y1, 0)
-    circle(x2, y2, 0)
-    draw_line(x1, y1, x2, y2)
+            new_dot_product = tangential_v[0] * dy - tangential_v[1] * dx
+            if new_dot_product > 0:
+                sign = -1
+            else:
+                sign = 1
+            player.omega = sign * np.linalg.norm(player.slipperiness * (player.v - projection))/player.radius
 
-#constucts a rectangle
-def rectangle(x1, y1, x2, y2):
-    line(x1, y1, x1, y2)
-    line(x1, y1, x2, y1)
-    line(x1, y2, x2, y2)
-    line(x2, y1, x2, y2)
+class Line(Shape):
+    def __init__(self, start, end):
+        self.start = start
+        self.end = end
+        self.circles = [
+            Circle(start[0], start[1], 0),
+            Circle(end[0], end[1], 0)
+        ]
 
-#main chunk of code
-while run:
-    #Use arrow keys to extert force on the player
-    force_x, force_y = 0, 0
-    keys = pygame.key.get_pressed()
-    if keys[pygame.K_UP]:# or keys[pygame.K_SPACE]:
-        if keys[pygame.K_DOWN]: force_y = 0
-        elif keys[pygame.K_LEFT]: force_x, force_y = -force/math.sqrt(2), -force/math.sqrt(2)
-        elif keys[pygame.K_RIGHT]: force_x, force_y = force/math.sqrt(2), -force/math.sqrt(2)
-        else: force_y = -force
-    elif keys[pygame.K_DOWN]:
-        if keys[pygame.K_LEFT]: force_x, force_y = -force/math.sqrt(2), force/math.sqrt(2)
-        elif keys[pygame.K_RIGHT]: force_x, rocket_force_y = force/math.sqrt(2), force/math.sqrt(2)
-        else: force_y = force
-    if keys[pygame.K_LEFT] and keys[pygame.K_RIGHT]: force_x = 0
-    elif keys[pygame.K_LEFT]: force_x = -force
-    elif keys[pygame.K_RIGHT]: force_x = force
+    def draw(self, camera):
+        p1 = np.array([w/2 + self.start[0] - camera.p[0], h/2 + self.start[1] - camera.p[1]], dtype = float)
+        p2 = np.array([w/2 + self.end[0] - camera.p[0], h/2 + self.end[1] - camera.p[1]], dtype = float)
+        pygame.draw.line(screen, "blue", (p1[0], p1[1]), (p2[0], p2[1]), 2)
 
-    #use d key to toggle debug mode
-    if keys[pygame.K_d]:
-        if temp:
-            if debug_mode == True: debug_mode = False
-            else: debug_mode = True
-            temp = False
-    else: temp = True
-
-    #updates player position (acceleration px/frame^2, velocity px/frame, position px)
-    acceleration = np.array([force_x, force_y + gravity], dtype = float)
-    velocity += acceleration
-    position += velocity
-
-    #camera moves vertically if player reaches top or bottom camera buffer
-    w, h = pygame.display.get_surface().get_size()
-    if abs(position[1] - camera_position_y) > h/2 - camera_buffer_y:
-        if position[1] > camera_position_y: target_y = position[1] - (h/2 - camera_buffer_y)
-        else: target_y = position[1] + (h/2 - camera_buffer_y)
-
-    #camera moves towards a target infront of the direction the ball is going
-    speed = abs(velocity[0])
-    u = min(speed/100, 0.35)
-    if velocity[0] > 0: target_x = position[0] + w * u
-    else: target_x = position[0] - w * u
+    def collide(self, player):
+        #creates a unit vector pointing from the start of the line to the end
+        dx = self.end[0] - self.start[0]
+        dy = self.end[1] - self.start[1]
+        distance = math.sqrt(dx**2 + dy**2)
+        line_unit_vector = np.array([dx/distance, dy/distance], dtype = float)
         
-    # camera moves to smoothly follow the player     
-    camera_acceleration_x = -b * camera_velocity_x +  k * (target_x - camera_position_x)
-    camera_velocity_x += camera_acceleration_x
-    camera_position_x += camera_velocity_x
-    camera_acceleration_y = -2.1 * b * camera_velocity_y + 35 * k * (target_y - camera_position_y)
-    camera_velocity_y += camera_acceleration_y
-    camera_position_y += camera_velocity_y
+        # TODO: Refactor this into a function
+        #bounces player off line if they collide
+        dot_product = (player.p[0] - self.start[0]) * line_unit_vector[0] + (player.p[1] - self.start[1]) * line_unit_vector[1]
+        projection = np.array([dot_product * line_unit_vector[0], dot_product * line_unit_vector[1]])
+        normal_vector = np.array([(player.p[0] - self.start[0]), (player.p[1] - self.start[1])], dtype = float) - projection
+        norm = normal_vector/np.linalg.norm(normal_vector)
+        if dot_product > 0 and np.linalg.norm(projection) < distance:
+            if np.linalg.norm(normal_vector) < player.radius:
+                player.p = [self.start[0] + projection[0] + player.radius * norm[0]/np.linalg.norm(norm), self.start[1] + projection[1] + player.radius * norm[1]/np.linalg.norm(norm)]
+                dot_product = player.v[0] * norm[0] + player.v[1] * norm[1]
+                projection = np.array([dot_product * norm[0], dot_product * norm[1]])
+                normal_v = - player.bounciness * projection
+                tangential_v = player.slipperiness * (player.v - projection)
+                player.v = normal_v + tangential_v
+                
+                #changes rotation of player (not super physically accurate)
+                new_dot_product = tangential_v[0] * dx + tangential_v[1] * dy
+                if new_dot_product > 0: sign = 1
+                else: sign = -1
+                player.omega = sign * np.linalg.norm(tangential_v)/player.radius
 
-    #used to rotate the ball (not super pysically accurate)
-    rotation_b = 0.008
-    omega += -rotation_b * omega
-    theta += omega
+        self.circles[0].collide(player)
+        self.circles[1].collide(player)
 
-    #reset the screen and draws the player
-    screen.fill("white")
-    draw_line(position[0] - radius * math.cos(theta), position[1] - radius * math.sin(theta), position[0] + radius * math.cos(theta), position[1] + radius * math.sin(theta))
-    draw_line(position[0] - radius * math.cos(theta + math.pi/2), position[1] - radius * math.sin(theta + math.pi/2), position[0] + radius * math.cos(theta + math.pi/2), position[1] + radius * math.sin(theta + math.pi/2))
-    draw_circle(position[0], position[1], radius, 'blue')
+class Rectangle(Shape):
+    # vec1 and vec2 need better names
+    def __init__(self, vec1, vec2):
+        x1 = vec1[0]
+        y1 = vec1[1]
+        x2 = vec2[0]
+        y2 = vec2[1]
+        self.lines = [Line(np.array([x1, y1], dtype = float), np.array([x1, y2], dtype = float)), 
+                      Line(np.array([x1, y1], dtype = float), np.array([x2, y1], dtype = float)), 
+                      Line(np.array([x1, y2], dtype = float), np.array([x2, y2], dtype = float)), 
+                      Line(np.array([x2, y1], dtype = float), np.array([x2, y2], dtype = float))]
+
+    def draw(self, camera):
+        for line in self.lines:
+            line.draw(camera)
+
+    def collide(self, player):
+        for line in self.lines:
+            line.collide(player)
+
+
+class Player:
+    # TODO: A lot of these parameters could be moved to constants
+    def __init__(self, p: np.array, v: np.array, radius: float, gravity: float, bounciness: float, slipperiness: float, force: np.array, theta: float, omega: float):
+        self.p = p
+        self.v = v
+        self.radius = radius
+        self.gravity = gravity
+        self.bounciness = bounciness
+        self.slipperiness = slipperiness
+        self.base_force = force
+        self.force = np.array([0, 0], dtype = float)
+        self.theta = theta
+        self.omega = omega
+        
+
+    def draw(self, camera):
+        x = self.p[0]
+        y = self.p[1]
+        r = self.radius
+        theta = self.theta
+        Line(
+            np.array([x - r * math.cos(theta), y - r * math.sin(theta)], dtype = float),
+            np.array([x + r * math.cos(theta), y + r * math.sin(theta)], dtype = float)
+        ).draw(camera)
+        Line(
+            np.array([x - r * math.cos(theta + math.pi/2), y - r * math.sin(theta + math.pi/2)], dtype = float),
+            np.array([x + r * math.cos(theta + math.pi/2), y + r * math.sin(theta + math.pi/2)], dtype = float)
+        ).draw(camera)
+        # 'blue'
+        Circle(
+            x, y, r
+        ).draw(camera)
+
+    def update(self):
+        self.a = np.array([self.force[0], self.force[1] + self.gravity], dtype = float)
+        self.v += self.a
+        self.p += self.v
+        rotation_b = 0.008
+        self.omega += -rotation_b * self.omega
+        self.theta += self.omega
+
+    def collide(self, shapes):
+        for shape in shapes:
+            shape.collide(self)
+
+
+class Camera:
+    BUFFER_X = 500 
+    BUFFER_Y = 250
     
-    #create obstacles 
-    rectangle(5, 5, 4000, 1500)
-    circle(1000, 1000, 500)
-    line(2000, 1000, 3000, 800)
-    
-    #draws camera and camera target for debug mode
-    if debug_mode:
-        draw_circle(target_x, target_y, 10, 'red')
-        draw_circle(camera_position_x, camera_position_y, 20, 'black')
+    def __init__(self, p: np.array):
+        self.a = np.array([0,0], dtype = float)
+        self.v = np.array([0,0], dtype = float)
+        self.p = p
+        self.target = np.array([p[0],p[1]], dtype = float)
 
-    #quit game
-    for event in pygame.event.get():
-        if event.type == pygame.QUIT:
-            pygame.quit()
-            sys.exit()
-    pygame.display.flip()
-    fpsClock.tick(FPS)
-pygame.quit()
+    def draw(self):
+        # 'red'
+        Circle(self.target[0], self.target[1], 10).draw(self)
+        # 'black'
+        Circle(self.p[0], self.p[1], 20).draw(self)
+
+    def update(self, player: Player):
+        #camera moves vertically if player reaches top or bottom camera buffer
+        # TODO: Refactor the target calculation into a function
+        w, h = pygame.display.get_surface().get_size()
+        if abs(player.p[1] - self.p[1]) > h/2 - Camera.BUFFER_Y:
+            if player.p[1] > self.p[1]:
+                self.target[1] = player.p[1] - (h/2 - Camera.BUFFER_Y)
+            else:
+                self.target[1] = player.p[1] + (h/2 - Camera.BUFFER_Y)
+
+        #camera moves towards a target infront of the direction the ball is going
+        speed = abs(player.v[0])
+        u = min(speed/100, 0.35)
+        if player.v[0] > 0:
+            self.target[0] = player.p[0] + w * u
+        else:
+            self.target[0] = player.p[0] - w * u
+            
+        self.a[0] = -b * self.v[0] +  k * (self.target[0] - self.p[0])
+        self.v[0] += self.a[0]
+        self.p[0] += self.v[0]
+        self.a[1] = -2.1 * b * self.v[1] + 35 * k * (self.target[1] - self.p[1])
+        self.v[1] += self.a[1]
+        self.p[1] += self.v[1]
+
+class Game:
+    FPS = 165
+    def __init__(self):
+        pygame.init()
+        self.debug = False
+        self.camera = Camera(np.array([w/2, h/2], dtype = float))
+        self.player = Player(np.array([500, 500], dtype = float), np.array([1, 1], dtype = float), 100, 0.1, 0.8, 0.996, 0.15, 0, 0)
+        self.shapes = [
+            Circle(1000, 1000, 500),
+            Rectangle(np.array([5, 5], dtype = float), np.array([4000, 1500], dtype = float)),
+            Line(np.array([2000, 1000], dtype = float), np.array([3000, 800], dtype = float))
+        ]
+        self.clock = pygame.time.Clock()
+
+    def stop_requested(self):
+        for event in pygame.event.get():
+            if event.type == pygame.QUIT:
+                return True
+        return False
+
+    def handle_toggle_debug(self, keys):
+        if keys[pygame.K_d]:
+            self.debug = not self.debug
+    
+    def handle_player_input(self, keys):
+        force = self.player.base_force
+
+        force_x, force_y = 0, 0
+        # TODO: Simplify this logic, having more than 2-3 if/else statements is usually a code smell
+        if keys[pygame.K_UP]:# or keys[pygame.K_SPACE]:
+            if keys[pygame.K_DOWN]: force_y = 0
+            elif keys[pygame.K_LEFT]: force_x, force_y = -force/math.sqrt(2), -force/math.sqrt(2)
+            elif keys[pygame.K_RIGHT]: force_x, force_y = force/math.sqrt(2), -force/math.sqrt(2)
+            else: force_y = -force
+        elif keys[pygame.K_DOWN]:
+            if keys[pygame.K_LEFT]: force_x, force_y = -force/math.sqrt(2), force/math.sqrt(2)
+            elif keys[pygame.K_RIGHT]: force_x, force_y = force/math.sqrt(2), force/math.sqrt(2)
+            else: force_y = force
+        if keys[pygame.K_LEFT] and keys[pygame.K_RIGHT]: force_x = 0
+        elif keys[pygame.K_LEFT]: force_x = -force
+        elif keys[pygame.K_RIGHT]: force_x = force
+    
+        return np.array([force_x, force_y], dtype = float)
+    
+    def handle_input(self):
+        keys = pygame.key.get_pressed()
+        self.handle_toggle_debug(keys)
+        self.player.force = self.handle_player_input(keys)
+
+    def update(self):
+        self.player.update()
+        self.camera.update(self.player)
+        self.player.collide(self.shapes)
+
+    def draw(self):
+        screen.fill("white")
+        self.player.draw(self.camera)
+        if self.debug:
+            self.camera.draw()
+        for shape in self.shapes:
+            shape.draw(self.camera)
+        pygame.display.flip()
+
+    def run(self):
+        while not self.stop_requested():
+            self.handle_input()
+            self.update()
+            self.draw()
+            self.clock.tick(Game.FPS)
+
+Game().run()
